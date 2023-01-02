@@ -1,0 +1,12 @@
+{application, clicker, [
+    {description, "ClickHouse client library in Erlang"},
+    {vsn, "git"},
+    {registered, []},
+    {mod, {clicker_app, []}},
+    {applications, [kernel, stdlib]},
+    {env, []},
+    {modules, []},
+    {licenses, ["Apache-2.0"]},
+    {links, []},
+    {files, ["src", "rebar.config", "README.md", "Makefile"]}
+]}.

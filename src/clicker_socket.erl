@@ -8,6 +8,7 @@
     send/2,
     send_and_recv/2,
     send_and_recv/3,
+    setopts/2,
     recv/2,
     recv/3
 ]).
@@ -59,6 +60,9 @@ send_and_recv(#{mod := ssl, sock := Sock}, IoData, Timeout) ->
     ok = ssl:send(Sock, IoData),
     ssl:recv(Sock, 0, Timeout).
 
+setopts(#{mod := gen_tcp, sock := Sock}, Opts) -> inet:setopts(Sock, Opts);
+setopts(#{mod := ssl, sock := Sock}, Opts) -> ssl:setopts(Sock, Opts).
+
 %%%_* Internal functions =======================================================
 connect(Host, Port, Options) ->
     Timeout = maps:get(connect_timeout, Options, ?DEFAULT_CONNECT_TIMEOUT),
@@ -94,9 +98,6 @@ timeout(Deadline) ->
 get_mod(_SslOpts = true) -> ssl;
 get_mod(_SslOpts = [_ | _]) -> ssl;
 get_mod(_) -> gen_tcp.
-
-setopts(#{mod := gen_tcp, sock := Sock}, Opts) -> inet:setopts(Sock, Opts);
-setopts(#{mod := ssl, sock := Sock}, Opts) -> ssl:setopts(Sock, Opts).
 
 maybe_upgrade_to_ssl(#{mod := ssl} = Socket, Timeout) ->
     #{sock := Sock0, ssl_opts := SslOpts} = Socket,

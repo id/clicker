@@ -1,5 +1,5 @@
 {application, clicker, [
-    {description, "ClickHouse client library in Erlang"},
+    {description, "ClickHouse Erlang Driver with native (TCP) interface support."},
     {vsn, "git"},
     {registered, []},
     {mod, {clicker_app, []}},

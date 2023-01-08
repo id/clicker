@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  clickhouse-server:
+    image: "clickhouse/clickhouse-server:${CLICKHOUSE_TAG:-latest}"
+    container_name: clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    ports:
+      - "9000:9000"
+      - "8123:8123"

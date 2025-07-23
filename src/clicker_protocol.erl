@@ -11,7 +11,8 @@
     encode_addendum/2,
     encode_query/3,
     encode_empty_block/0,
-    encode_data/1
+    encode_data/1,
+    decode_query_result/1
 ]).
 
 -define(make_client_name(CLIENT_NAME), (iolist_to_binary(["ClickHouse ", CLIENT_NAME]))).
@@ -215,3 +216,117 @@ encode_data(Data) ->
         clicker_lib:encode_string(""),
         Data
     ]).
+
+%% Decode query result packets
+decode_query_result(Packet) ->
+    decode_query_result_packets(Packet, []).
+
+decode_query_result_packets(<<>>, Acc) ->
+    {ok, lists:reverse(Acc)};
+decode_query_result_packets(Packet, Acc) ->
+    case clicker_lib:decode_varuint(Packet) of
+        {?SERVER_DATA, Rest} ->
+            case decode_data_packet(Rest) of
+                {ok, DataBlock, Remaining} ->
+                    decode_query_result_packets(Remaining, [{data, DataBlock} | Acc]);
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {?SERVER_END_OF_STREAM, Rest} ->
+            decode_query_result_packets(Rest, [end_of_stream | Acc]);
+        {?SERVER_EXCEPTION, Rest} ->
+            case decode_exception_packet(Rest) of
+                {ok, Exception, Remaining} ->
+                    decode_query_result_packets(Remaining, [{exception, Exception} | Acc]);
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {?SERVER_PROGRESS, Rest} ->
+            case decode_progress_packet(Rest) of
+                {ok, Progress, Remaining} ->
+                    decode_query_result_packets(Remaining, [{progress, Progress} | Acc]);
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {PacketType, Rest} ->
+            % For unknown packet types, just include them as raw data
+            decode_query_result_packets(Rest, [{unknown, PacketType} | Acc]);
+        _ ->
+            {error, {invalid_packet, Packet}}
+    end.
+
+%% Decode data packet (simplified version - basic structure)
+decode_data_packet(Bin) ->
+    try
+        % Skip temporary table name (empty string)
+        {_TempTableName, Bin1} = clicker_lib:decode_string(Bin),
+        % Decode block info structure
+        case decode_block_info(Bin1) of
+            {ok, BlockInfo, Remaining} ->
+                {ok, #{block_info => BlockInfo}, Remaining};
+            {error, Reason} ->
+                {error, Reason}
+        end
+    catch
+        _:Error ->
+            {error, {decode_data_packet_failed, Error}}
+    end.
+
+%% Decode block info (simplified)
+decode_block_info(Bin) ->
+    try
+        {_Field1, Bin1} = clicker_lib:decode_varuint(Bin),
+        {ok, _IsOverflow, Bin2} = clicker_lib:decode(boolean, Bin1),
+        {_Field2, Bin3} = clicker_lib:decode_varuint(Bin2),
+        {ok, _BucketNum, Bin4} = clicker_lib:decode(int32, Bin3),
+        {_Field3, Bin5} = clicker_lib:decode_varuint(Bin4),
+        {NumColumns, Bin6} = clicker_lib:decode_varuint(Bin5),
+        {NumRows, Remaining} = clicker_lib:decode_varuint(Bin6),
+        
+        BlockInfo = #{
+            num_columns => NumColumns,
+            num_rows => NumRows
+        },
+        {ok, BlockInfo, Remaining}
+    catch
+        _:Error ->
+            {error, {decode_block_info_failed, Error}}
+    end.
+
+%% Decode exception packet
+decode_exception_packet(Bin) ->
+    try
+        {ok, Code, Bin1} = clicker_lib:decode(int32, Bin),
+        {Name, Bin2} = clicker_lib:decode_string(Bin1),
+        {Message, Bin3} = clicker_lib:decode_string(Bin2),
+        {StackTrace, Remaining} = clicker_lib:decode_string(Bin3),
+        
+        Exception = #{
+            code => Code,
+            name => binary_to_list(Name),
+            message => binary_to_list(Message),
+            stack_trace => binary_to_list(StackTrace)
+        },
+        {ok, Exception, Remaining}
+    catch
+        _:Error ->
+            {error, {decode_exception_failed, Error}}
+    end.
+
+%% Decode progress packet (simplified)
+decode_progress_packet(Bin) ->
+    try
+        {ReadRows, Bin1} = clicker_lib:decode_varuint(Bin),
+        {ReadBytes, Bin2} = clicker_lib:decode_varuint(Bin1),
+        {TotalRows, Remaining} = clicker_lib:decode_varuint(Bin2),
+        
+        Progress = #{
+            read_rows => ReadRows,
+            read_bytes => ReadBytes,
+            total_rows => TotalRows
+        },
+        {ok, Progress, Remaining}
+    catch
+        _:Error ->
+            {error, {decode_progress_failed, Error}}
+    end.

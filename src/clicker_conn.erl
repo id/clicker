@@ -93,7 +93,12 @@ connected({call, From}, {query, Query, Timeout}, #{socket := Socket} = Data) ->
     ok = clicker_socket:send(Socket, clicker_protocol:encode_data(Block)),
     case clicker_socket:recv(Socket, 0, Timeout) of
         {ok, Packet} ->
-            {keep_state, Data, {reply, From, {ok, Packet}}};
+            case clicker_protocol:decode_query_result(Packet) of
+                {ok, DecodedResult} ->
+                    {keep_state, Data, {reply, From, {ok, DecodedResult}}};
+                {error, Reason} ->
+                    {keep_state, Data, {reply, From, {error, Reason}}}
+            end;
         Error ->
             {keep_state, Data, {reply, From, {error, Error}}}
     end.
